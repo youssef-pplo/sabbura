@@ -56,39 +56,55 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   // Helper to extract bounds of current selection
   const getSelectionBounds = () => {
     if (selectedIds.length === 0) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     
-    // Note: This bounding box calculation doesn't perfectly account for rotation of individual items
-    // It creates an AABB around them. For proper group rotation, we'd need complex logic.
-    // For single item, we return its specific bounds.
+    // For single element selection, use its own local bounds logic
     if (selectedIds.length === 1) {
         const el = elements.find(e => e.id === selectedIds[0]);
         if (!el) return null;
         return { x: el.x, y: el.y, width: el.width || 0, height: el.height || 0, rotation: el.rotation || 0 };
     }
 
+    // For multiple selection, calculate the AABB of all elements in World Space
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
     elements.filter(el => selectedIds.includes(el.id)).forEach(el => {
-      // Approximate bounds for rotated elements for the group box
-      // (Simplified: just using x/y/w/h, ignoring rotation for group selection box for now)
-      if (el.points) {
-        el.points.forEach(p => {
-           minX = Math.min(minX, p.x);
-           minY = Math.min(minY, p.y);
-           maxX = Math.max(maxX, p.x);
-           maxY = Math.max(maxY, p.y);
-        });
-      } else {
-         const w = el.width || 0;
-         const h = el.height || 0;
-         const x1 = Math.min(el.x, el.x + w);
-         const x2 = Math.max(el.x, el.x + w);
-         const y1 = Math.min(el.y, el.y + h);
-         const y2 = Math.max(el.y, el.y + h);
-         
-         minX = Math.min(minX, x1);
-         minY = Math.min(minY, y1);
-         maxX = Math.max(maxX, x2);
-         maxY = Math.max(maxY, y2);
+      const w = el.width || 0;
+      const h = el.height || 0;
+      const r = el.rotation || 0;
+      const cx = el.x + w / 2;
+      const cy = el.y + h / 2;
+
+      // Calculate corners of the unrotated box relative to world 0,0 then rotate them around center
+      // Corners relative to top-left (el.x, el.y): (0,0), (w,0), (w,h), (0,h)
+      // World corners:
+      const corners = [
+        { x: el.x, y: el.y },
+        { x: el.x + w, y: el.y },
+        { x: el.x + w, y: el.y + h },
+        { x: el.x, y: el.y + h }
+      ];
+
+      corners.forEach(c => {
+         const rp = r ? rotatePoint(c, { x: cx, y: cy }, r) : c;
+         minX = Math.min(minX, rp.x);
+         minY = Math.min(minY, rp.y);
+         maxX = Math.max(maxX, rp.x);
+         maxY = Math.max(maxY, rp.y);
+      });
+      
+      // If element is pencil and has points, ensure points are covered
+      // (Though usually covered by x/y/w/h if set correctly on creation)
+      if (el.type === 'pencil' && el.points) {
+          el.points.forEach(p => {
+              // Note: Pencil points are absolute. If we support rotating pencil, we'd need to rotate these points 
+              // around the center for the bounds check, similar to above.
+              // Assuming pencil rotation updates the points or transform:
+              const rp = r ? rotatePoint(p, { x: cx, y: cy }, r) : p;
+              minX = Math.min(minX, rp.x);
+              minY = Math.min(minY, rp.y);
+              maxX = Math.max(maxX, rp.x);
+              maxY = Math.max(maxY, rp.y);
+          });
       }
     });
     
@@ -99,15 +115,12 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   useImperativeHandle(ref, () => ({
     exportImage: () => {
        if (elements.length === 0) return;
-       // ... (Export logic omitted for brevity, keeping existing structure)
        const link = document.createElement('a');
        link.download = `sabbura-export-${Date.now()}.png`;
-       // Using simple capture for now as implemented before
        if(canvasRef.current) link.href = canvasRef.current.toDataURL(); 
        link.click();
     },
     solveMath: async () => {
-      // ... (Same math solve logic)
       const bounds = getSelectionBounds();
       if (!bounds) {
         alert("Please select the math problem first.");
@@ -217,10 +230,9 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, elements, history, historyIndex]);
 
-  // Handle AI Ideas integration (same as before)
+  // Handle AI Ideas integration
   useEffect(() => {
     if (aiIdeas.length > 0) {
-      // ... (Implementation unchanged)
       const newElements: CanvasElement[] = [];
       const startX = -viewport.x / viewport.zoom + 100;
       const startY = -viewport.y / viewport.zoom + 100;
@@ -271,28 +283,27 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   };
 
   const drawWrappedText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, width: number, lineHeight: number) => {
-      // ... (Same implementation)
-      const words = text.split(' ');
-      let line = '';
-      let testLine = '';
       const paragraphs = text.split('\n');
+      let currentY = y;
       
       for (let p = 0; p < paragraphs.length; p++) {
-          const pWords = paragraphs[p].split(' ');
-          for (let n = 0; n < pWords.length; n++) {
-              testLine = line + pWords[n] + ' ';
+          const words = paragraphs[p].split(' ');
+          let line = '';
+          
+          for (let n = 0; n < words.length; n++) {
+              const testLine = line + words[n] + ' ';
               const metrics = ctx.measureText(testLine);
               if (metrics.width > width && n > 0) {
-                  ctx.fillText(line, x, y);
-                  line = pWords[n] + ' ';
-                  y += lineHeight;
+                  ctx.fillText(line, x, currentY);
+                  line = words[n] + ' ';
+                  currentY += lineHeight;
               } else {
                   line = testLine;
               }
           }
-          ctx.fillText(line, x, y);
+          ctx.fillText(line, x, currentY);
           line = '';
-          y += lineHeight;
+          currentY += lineHeight;
       }
   };
 
@@ -437,7 +448,7 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
             if (bounds) {
                 ctx.save();
                 
-                // If single selection, rotate the box
+                // If single selection, rotate the box context to match element
                 if (selectedIds.length === 1 && bounds.rotation) {
                    const cx = bounds.x + bounds.width / 2;
                    const cy = bounds.y + bounds.height / 2;
@@ -453,8 +464,7 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
                 // Bounding Box
                 ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
                 
-                // Dimensions (unrotated text for readability? or rotated?)
-                // If rotated, the text will be rotated too, which is fine.
+                // Dimensions Label
                 ctx.fillStyle = '#3b82f6';
                 ctx.font = `${12 / viewport.zoom}px sans-serif`;
                 const dimText = `${Math.round(bounds.width)} x ${Math.round(bounds.height)}`;
@@ -470,14 +480,14 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
                 const handleSize = 6 / viewport.zoom;
                 
                 const handles = [
-                   { x: bounds.x, y: bounds.y, cursor: 'nw-resize' }, // nw
-                   { x: bounds.x + bounds.width/2, y: bounds.y, cursor: 'n-resize' }, // n
-                   { x: bounds.x + bounds.width, y: bounds.y, cursor: 'ne-resize' }, // ne
-                   { x: bounds.x + bounds.width, y: bounds.y + bounds.height/2, cursor: 'e-resize' }, // e
-                   { x: bounds.x + bounds.width, y: bounds.y + bounds.height, cursor: 'se-resize' }, // se
-                   { x: bounds.x + bounds.width/2, y: bounds.y + bounds.height, cursor: 's-resize' }, // s
-                   { x: bounds.x, y: bounds.y + bounds.height, cursor: 'sw-resize' }, // sw
-                   { x: bounds.x, y: bounds.y + bounds.height/2, cursor: 'w-resize' }, // w
+                   { x: bounds.x, y: bounds.y, cursor: 'nw-resize' },
+                   { x: bounds.x + bounds.width/2, y: bounds.y, cursor: 'n-resize' },
+                   { x: bounds.x + bounds.width, y: bounds.y, cursor: 'ne-resize' },
+                   { x: bounds.x + bounds.width, y: bounds.y + bounds.height/2, cursor: 'e-resize' },
+                   { x: bounds.x + bounds.width, y: bounds.y + bounds.height, cursor: 'se-resize' },
+                   { x: bounds.x + bounds.width/2, y: bounds.y + bounds.height, cursor: 's-resize' },
+                   { x: bounds.x, y: bounds.y + bounds.height, cursor: 'sw-resize' },
+                   { x: bounds.x, y: bounds.y + bounds.height/2, cursor: 'w-resize' },
                 ];
 
                 handles.forEach(h => {
@@ -507,8 +517,8 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     // Draw Selection Box Drag Area (Blue Box)
     if (selectionBox) {
         ctx.strokeStyle = '#3b82f6';
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
-        ctx.lineWidth = 1 / viewport.zoom;
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)'; // Increased opacity slightly for better visibility
+        ctx.lineWidth = 1.5 / viewport.zoom;
         const w = selectionBox.current.x - selectionBox.start.x;
         const h = selectionBox.current.y - selectionBox.start.y;
         ctx.fillRect(selectionBox.start.x, selectionBox.start.y, w, h);
@@ -523,7 +533,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   });
 
   const handleLayerAction = (layerAction: 'forward' | 'backward' | 'front' | 'back') => {
-    // ... (Same implementation)
     if (selectedIds.length !== 1) return; 
     const id = selectedIds[0];
     const index = elements.findIndex(e => e.id === id);
@@ -541,7 +550,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   };
 
   const handlePropertyChange = (updates: Partial<CanvasElement>) => {
-    // ... (Same implementation)
     const newElements = elements.map(el => {
         if (selectedIds.includes(el.id)) {
             if (el.locked && !('locked' in updates)) return el;
@@ -556,7 +564,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   };
 
   const handleDoubleClick = (event: React.MouseEvent) => {
-      // ... (Same implementation)
       const { x, y } = getMouseCoordinates(event);
       const element = getElementAtPosition(x, y, elements);
       if (element && (element.type === 'text' || element.type === 'sticky') && !element.locked) {
@@ -574,14 +581,10 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   // Helper to check if mouse is over a handle
   const getHandleAtPosition = (x: number, y: number, bounds: any, zoom: number) => {
      if (!bounds) return null;
-     const handleSize = 10 / zoom; // Hit area slightly larger
+     const handleSize = 10 / zoom;
      
-     // Note: Mouse coordinates (x,y) are already in world space.
-     // Bounds has x,y,w,h, rotation.
-     // We need to transform the mouse point into the un-rotated box space to check against standard handles easily
-     // OR transform handles to world space. 
-     // Transforming mouse to local space is easier.
-     
+     // Rotate mouse point back to local unrotated space relative to element center to check against handles
+     // Note: bounds.x/y is top-left of unrotated box.
      const cx = bounds.x + bounds.width / 2;
      const cy = bounds.y + bounds.height / 2;
      const p = rotatePoint({ x, y }, { x: cx, y: cy }, -bounds.rotation);
@@ -616,7 +619,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     }
 
     if (tool === 'selection') {
-      // Check handles first if something is selected
       const bounds = getSelectionBounds();
       const handle = getHandleAtPosition(x, y, bounds, viewport.zoom);
 
@@ -628,7 +630,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
               setActiveHandle(handle);
           }
           setDragStart({ x, y });
-          // Store initial state for the element being modified
           if (selectedIds.length === 1) {
              setInitialElementState(elements.find(e => e.id === selectedIds[0]) || null);
           }
@@ -736,7 +737,7 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     if (action === 'rotating' && initialElementState && selectedIds.length === 1) {
         const cx = initialElementState.x + (initialElementState.width || 0) / 2;
         const cy = initialElementState.y + (initialElementState.height || 0) / 2;
-        const angle = Math.atan2(y - cy, x - cx) + Math.PI / 2; // +90deg to match handle at top
+        const angle = Math.atan2(y - cy, x - cx) + Math.PI / 2;
         
         const newElements = elements.map(el => {
             if (el.id === selectedIds[0]) {
@@ -753,7 +754,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
         const cx = el.x + (el.width || 0) / 2;
         const cy = el.y + (el.height || 0) / 2;
         
-        // Rotate mouse point back to local unrotated space relative to original center
         const p = rotatePoint({ x, y }, { x: cx, y: cy }, -(el.rotation || 0));
         
         let newX = el.x;
@@ -761,7 +761,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
         let newW = el.width || 0;
         let newH = el.height || 0;
 
-        // Calculate new bounds in local space
         if (activeHandle.includes('n')) {
              const delta = p.y - el.y;
              newY += delta;
@@ -779,31 +778,8 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
              newW = p.x - el.x;
         }
 
-        // Now we have the new box in local space.
-        // The problem is that scaling top-left (newX, newY) changes the center position in local space.
-        // We need to rotate that center shift back to world space to update the actual x,y.
-        
-        // Old Center Local (relative to itself) was (w/2, h/2).
-        // New Center Local (relative to old top-left) is (newX - oldX) + newW/2, (newY - oldY) + newH/2
-        
-        const newCxLocal = newX + newW/2;
-        const newCyLocal = newY + newH/2;
-        
-        // Rotate this point around the OLD center to get the NEW center in world space
-        // Wait, 'p' was rotated around 'cx, cy' (old center).
-        // The 'newX, newY' are relative to the old unrotated frame origin? No, they are absolute coordinates in the unrotated world frame.
-        
-        // Let's simplified approach:
-        // 1. Calculate new center in the unrotated frame.
         const unrotatedNewCenter = { x: newX + newW/2, y: newY + newH/2 };
-        
-        // 2. Rotate this new center by the ANGLE around the OLD center.
         const rotatedNewCenter = rotatePoint(unrotatedNewCenter, { x: cx, y: cy }, (el.rotation || 0));
-        
-        // 3. The new top-left corner (world) is NewCenterWorld - (NewWidth/2, NewHeight/2) rotated?
-        // Actually, x and y in CanvasElement usually denote top-left of the bounding box *before* rotation.
-        // The renderer does: translate(x+w/2, y+h/2) -> rotate -> translate(-w/2, -h/2).
-        // So we just need to set x,y such that x+w/2 = rotatedNewCenter.x and y+h/2 = rotatedNewCenter.y.
         
         const finalX = rotatedNewCenter.x - newW / 2;
         const finalY = rotatedNewCenter.y - newH / 2;
@@ -863,7 +839,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
 
         const newElements = elements.map(el => {
             if (selectedIds.includes(el.id) && !el.locked) {
-                // If moving a rotated element, just update x/y. x/y is the top-left of the unrotated box.
                 return { ...el, x: el.x + finalDx, y: el.y + finalDy };
             }
             return el;
@@ -876,7 +851,7 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
 
   const handleMouseUp = () => {
     if (action === 'selecting' && selectionBox) {
-        // Selection Box Logic
+        // Normalize selection box for calculation
         const x1 = Math.min(selectionBox.start.x, selectionBox.current.x);
         const y1 = Math.min(selectionBox.start.y, selectionBox.current.y);
         const x2 = Math.max(selectionBox.start.x, selectionBox.current.x);
@@ -886,9 +861,8 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
             // Check intersection with AABB of elements
             const w = el.width || 0;
             const h = el.height || 0;
-            // Simplified check: Element center inside box? Or overlapping?
-            // Overlap check AABB vs AABB (ignoring element rotation for selection box drag)
             const ex = el.x; const ey = el.y;
+            // Simple AABB overlap check
             return ex < x2 && ex + w > x1 && ey < y2 && ey + h > y1;
         }).map(e => e.id);
         
@@ -896,10 +870,22 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
         setSelectionBox(null);
     }
     else if (['drawing', 'moving', 'resizing', 'rotating'].includes(action)) {
-       // Consolidate changes to history
       const newElements = elements.map((el) => {
           if (selectedIds.includes(el.id)) {
-              if (action === 'drawing') return adjustCoordinates(el);
+              if (action === 'drawing') {
+                 // Calculate bounds for pencil after drawing ensures correct selection box
+                 if (tool === 'pencil' && el.points && el.points.length > 0) {
+                     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                     el.points.forEach(p => {
+                        minX = Math.min(minX, p.x);
+                        minY = Math.min(minY, p.y);
+                        maxX = Math.max(maxX, p.x);
+                        maxY = Math.max(maxY, p.y);
+                     });
+                     return { ...el, x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+                 }
+                 return adjustCoordinates(el);
+              }
               return el;
           }
           return el;
@@ -923,7 +909,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     setElements(newElements);
   };
 
-  // ... (Resize and Wheel effects unchanged)
   useEffect(() => {
     const handleResize = () => {
       if (canvasRef.current) {
