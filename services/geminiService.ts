@@ -1,21 +1,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { DEEPSEEK_API_KEY } from "../constants";
+
+// Initialize the Google GenAI client
+// The API key must be obtained exclusively from the environment variable process.env.API_KEY
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateBrainstormIdeas = async (topic: string): Promise<{ title: string; description: string }[]> => {
   try {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      console.warn("No API Key found");
-      return [
-        { title: "No API Key", description: "Please configure your API key to use AI features." },
-      ];
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-    
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Brainstorm 6 distinct, creative, and short ideas related to the topic: "${topic}". Return them as a JSON array of objects with 'title' and 'description' keys. Keep descriptions under 15 words.`,
+      contents: `Brainstorm 6 distinct, creative, and short ideas related to the topic: "${topic}".`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -24,86 +17,72 @@ export const generateBrainstormIdeas = async (topic: string): Promise<{ title: s
             type: Type.OBJECT,
             properties: {
               title: { type: Type.STRING },
-              description: { type: Type.STRING }
+              description: { type: Type.STRING },
             },
-            required: ["title", "description"]
-          }
-        }
-      }
+            required: ["title", "description"],
+          },
+        },
+      },
     });
 
-    if (response.text) {
-      return JSON.parse(response.text);
-    }
-    return [];
+    const jsonStr = response.text || "[]";
+    return JSON.parse(jsonStr);
 
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return [];
+    console.error("Gemini Brainstorm Error:", error);
+    return [
+      { title: "Error", description: "Could not generate ideas. Check API Key." }
+    ];
   }
 };
 
 /**
- * Uses Gemini Vision to extract text/math from an image
+ * Uses Gemini to extract text from an image (OCR)
+ * Replaces Tesseract.js with Gemini Vision capabilities.
  */
 export const recognizeImageContent = async (imageBase64: string): Promise<string | null> => {
   try {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("No Google API Key");
-
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // Remove header if present
-    const cleanBase64 = imageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
+    // Remove the data URL prefix (e.g., "data:image/png;base64,") to get just the base64 string
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: {
         parts: [
-          { inlineData: { mimeType: "image/png", data: cleanBase64 } },
-          { text: "Transcribe the math problem or text in this image exactly as it appears. Do not solve it yet. Return only the string." }
-        ]
-      }
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: base64Data,
+            },
+          },
+          {
+            text: "Extract all the text from this image. Return only the text content.",
+          },
+        ],
+      },
     });
-
-    return response.text || null;
+    
+    return response.text?.trim() || null;
   } catch (error) {
-    console.error("Gemini Vision Error:", error);
+    console.error("Gemini OCR Error:", error);
     return null;
   }
 };
 
 /**
- * Uses DeepSeek API to solve the math problem
+ * Uses Gemini to solve the math problem
  */
-export const solveWithDeepSeek = async (problem: string): Promise<string | null> => {
+export const solveMathProblem = async (problem: string): Promise<string | null> => {
   try {
-    if (!DEEPSEEK_API_KEY) throw new Error("No DeepSeek API Key");
-
-    const response = await fetch("https://api.deepseek.com/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${DEEPSEEK_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          { role: "system", content: "You are a helpful math tutor. Solve the following problem concisely. Provide the final answer clearly." },
-          { role: "user", content: problem }
-        ],
-        stream: false
-      })
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: `You are a helpful math tutor. Solve the following problem concisely. Show the steps briefly and provide the final answer clearly.\n\nProblem: ${problem}`,
     });
 
-    const data = await response.json();
-    if (data.choices && data.choices.length > 0) {
-      return data.choices[0].message.content;
-    }
-    return null;
+    return response.text || null;
 
   } catch (error) {
-    console.error("DeepSeek API Error:", error);
-    return null;
+    console.error("Gemini Solve Error:", error);
+    return "Failed to solve. Please check your API key.";
   }
 };

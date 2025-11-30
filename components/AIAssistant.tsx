@@ -10,45 +10,58 @@ interface AIAssistantProps {
 const AIAssistant: React.FC<AIAssistantProps> = ({ isOpen, onClose, onIdeasGenerated }) => {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
-
+    
     setLoading(true);
-    const ideas = await generateBrainstormIdeas(prompt);
-    setLoading(false);
-    onIdeasGenerated(ideas);
-    setPrompt('');
-    onClose();
+    setError(null);
+    try {
+      const ideas = await generateBrainstormIdeas(prompt);
+      onIdeasGenerated(ideas);
+      setPrompt('');
+      onClose();
+    } catch (e) {
+      setError("Failed to generate ideas. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-6">
+        <div className="bg-gradient-to-r from-blue-700 to-indigo-800 p-6">
           <h2 className="text-white text-xl font-bold flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-            AI Brainstorming
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 1 0 10 10H12V2z"/><path d="M12 12 2.1 12"/><path d="M12 12 5.5 2.5"/><path d="M12 12 18.5 2.5"/></svg>
+            AI Brainstorm
           </h2>
-          <p className="text-purple-100 text-sm mt-1">
-            Describe a topic, and I'll generate sticky notes for you.
+          <p className="text-indigo-200 text-sm mt-1">
+            Powered by Google Gemini. Describe a topic to generate ideas.
           </p>
         </div>
         
         <form onSubmit={handleSubmit} className="p-6">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+              {error}
+            </div>
+          )}
+          
           <div className="mb-4">
             <label className="block text-sm font-medium text-slate-700 mb-2">
-              What do you want to brainstorm?
+              Topic
             </label>
             <input
               type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g. Marketing strategies for a coffee shop"
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all"
+              placeholder="e.g. Quantum Physics for 5 year olds"
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
               autoFocus
             />
           </div>
@@ -64,7 +77,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ isOpen, onClose, onIdeasGener
             <button
               type="submit"
               disabled={loading || !prompt.trim()}
-              className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
