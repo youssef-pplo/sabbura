@@ -39,3 +39,5 @@ export const DEFAULT_ELEMENT_STYLES = {
   opacity: 1,
   strokeStyle: 'solid',
 };
+
+export const DEEPSEEK_API_KEY = "sk-56ecf624c962419f9c49310d8aabfacc";

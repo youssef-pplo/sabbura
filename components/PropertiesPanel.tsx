@@ -50,7 +50,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ elements, onChange, o
 
   return (
     <div 
-      className="absolute top-16 right-4 bg-white/95 backdrop-blur p-4 rounded-xl shadow-xl border border-slate-200 w-72 flex flex-col gap-4 animate-in fade-in zoom-in duration-200 select-none z-50 max-h-[80vh] overflow-y-auto custom-scrollbar"
+      className="fixed top-16 right-4 bg-white/95 backdrop-blur p-4 rounded-xl shadow-xl border border-slate-200 w-72 flex flex-col gap-4 animate-in fade-in zoom-in duration-200 select-none z-50 max-h-[80vh] overflow-y-auto custom-scrollbar"
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between border-b border-slate-100 pb-2 sticky top-0 bg-white/95 z-10">

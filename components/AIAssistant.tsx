@@ -22,11 +22,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ isOpen, onClose, onIdeasGener
     setError(null);
     try {
       const ideas = await generateBrainstormIdeas(prompt);
+      if (ideas.length === 0) {
+        throw new Error("No ideas returned");
+      }
       onIdeasGenerated(ideas);
       setPrompt('');
       onClose();
     } catch (e) {
-      setError("Failed to generate ideas. Please try again.");
+      setError("Failed to generate ideas. Please check your network or API Key.");
     } finally {
       setLoading(false);
     }
@@ -41,7 +44,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ isOpen, onClose, onIdeasGener
             AI Brainstorm
           </h2>
           <p className="text-indigo-200 text-sm mt-1">
-            Powered by Google Gemini. Describe a topic to generate ideas.
+            Powered by DeepSeek AI. Describe a topic to generate ideas.
           </p>
         </div>
         

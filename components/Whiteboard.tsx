@@ -46,12 +46,12 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   const [action, setAction] = useState<'drawing' | 'moving' | 'panning' | 'resizing' | 'rotating' | 'selecting' | 'idle'>('idle');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [panStart, setPanStart] = useState<Point>({ x: 0, y: 0 });
-  const [dragOffset, setDragOffset] = useState<Point>({ x: 0, y: 0 }); // Offset for moving
-  const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 }); // Start point for resize/rotate
-  const [initialElementState, setInitialElementState] = useState<CanvasElement | null>(null); // For resize/rotate base
+  const [dragOffset, setDragOffset] = useState<Point>({ x: 0, y: 0 }); 
+  const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 }); 
+  const [initialElementState, setInitialElementState] = useState<CanvasElement | null>(null); 
   const [guides, setGuides] = useState<GuideLine[]>([]);
   const [selectionBox, setSelectionBox] = useState<{ start: Point; current: Point } | null>(null);
-  const [activeHandle, setActiveHandle] = useState<string | null>(null); // 'nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'rotate'
+  const [activeHandle, setActiveHandle] = useState<string | null>(null); 
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Helper to extract bounds of current selection
@@ -124,9 +124,11 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
       const canvas = canvasRef.current;
       if (!canvas) return;
       
+      // Add padding to capture area
+      const padding = 20;
       const captureCanvas = document.createElement('canvas');
-      captureCanvas.width = bounds.width + 40;
-      captureCanvas.height = bounds.height + 40;
+      captureCanvas.width = bounds.width + (padding * 2);
+      captureCanvas.height = bounds.height + (padding * 2);
       const ctx = captureCanvas.getContext('2d');
       if (!ctx) return;
       
@@ -135,7 +137,8 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
       
       const selectedElements = elements.filter(el => selectedIds.includes(el.id));
       
-      ctx.translate(-bounds.x + 20, -bounds.y + 20);
+      // Translate so the selection is centered in the capture canvas
+      ctx.translate(-bounds.x + padding, -bounds.y + padding);
       
       selectedElements.forEach(element => {
           ctx.save();
@@ -177,14 +180,17 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
 
       const imageBase64 = captureCanvas.toDataURL('image/png');
       const problemText = await recognizeImageContent(imageBase64);
-      if (!problemText) return;
+      if (!problemText) {
+        alert("Could not recognize text in the selection.");
+        return;
+      }
       const solution = await solveMathProblem(problemText);
       if (!solution) return;
 
       const solutionElement: CanvasElement = {
          id: uuidv4(),
          type: 'sticky',
-         x: bounds.x + bounds.width + 20,
+         x: bounds.x + bounds.width + 40,
          y: bounds.y,
          width: 250,
          height: 200,
@@ -207,10 +213,9 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     }
   }));
 
-  // Handle delete key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-       if (editingId) return; // Don't delete while editing text
+       if (editingId) return; 
        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
           const newElements = elements.filter(el => !selectedIds.includes(el.id));
           const newHistory = history.slice(0, historyIndex + 1);
@@ -224,7 +229,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, elements, history, historyIndex, editingId]);
 
-  // Handle AI Ideas integration
   useEffect(() => {
     if (aiIdeas.length > 0) {
       const newElements: CanvasElement[] = [];
@@ -276,7 +280,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     return Math.round(value / GRID_SIZE) * GRID_SIZE;
   };
 
-  // Helper to split text into lines for rendering and height calculation
   const getWrappedTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
       const paragraphs = text.split('\n');
       const lines: string[] = [];
@@ -307,23 +310,9 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
       });
   };
 
-  const handleTextComplete = (id: string, newText: string) => {
-      setEditingId(null);
-      
-      // If text is empty, remove the element (unless it's a sticky which might be intentional, but generally better to remove)
-      if (!newText.trim()) {
-          const el = elements.find(e => e.id === id);
-          if (el && el.type === 'text') { 
-               const newElements = elements.filter(e => e.id !== id);
-               setElements(newElements);
-               const newHistory = history.slice(0, historyIndex + 1);
-               setHistory([...newHistory, newElements]);
-               setHistoryIndex(newHistory.length);
-               return;
-          }
-      }
+  const updateElementText = (id: string, newText: string) => {
+      if (!newText.trim()) return;
 
-      // Recalculate height for text elements
       const el = elements.find(e => e.id === id);
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
@@ -338,9 +327,8 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
            const lines = getWrappedTextLines(ctx, newText, w);
            const measuredHeight = (lines.length * lineHeight) + (padding * 2);
            
-           // Only auto-resize height for plain text or if sticky content overflows
            if (el.type === 'text' || measuredHeight > (el.height || 0)) {
-               newHeight = Math.max(measuredHeight, 50); // Minimum height
+               newHeight = Math.max(measuredHeight, 50); 
            }
       }
 
@@ -351,7 +339,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
       setHistoryIndex(newHistory.length);
   };
 
-  // Main Draw Function
   const draw = () => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -363,7 +350,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     ctx.translate(viewport.x, viewport.y);
     ctx.scale(viewport.zoom, viewport.zoom);
 
-    // Draw Grid
     if (showGrid) {
         ctx.save();
         ctx.strokeStyle = '#e2e8f0'; 
@@ -382,13 +368,8 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
         ctx.restore();
     }
 
-    // Draw Elements
     elements.forEach(element => {
-      // Skip drawing text content if we are currently editing it
-      const isEditing = element.id === editingId;
-
       ctx.save();
-      
       const cx = element.x + (element.width || 0) / 2;
       const cy = element.y + (element.height || 0) / 2;
       if (element.rotation) {
@@ -455,7 +436,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
         ctx.stroke();
       }
       else if ((element.type === 'text' || element.type === 'sticky')) {
-        // Draw background for sticky
         if (element.type === 'sticky') {
              ctx.fillStyle = 'rgba(0,0,0,0.1)';
              ctx.fillRect(element.x + 4, element.y + 4, element.width || 0, element.height || 0);
@@ -463,8 +443,7 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
              ctx.fillRect(element.x, element.y, element.width || 0, element.height || 0);
         }
 
-        // Draw text only if not editing
-        if (!isEditing && element.text) {
+        if (element.text) {
              ctx.textBaseline = 'top';
              const fontSize = 12 + (element.strokeWidth * 2);
              ctx.font = `${fontSize}px ${element.fontFamily || 'sans-serif'}`;
@@ -483,15 +462,14 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
              drawWrappedText(ctx, element.text, x, y, w, lineHeight);
         }
       }
-      
       ctx.restore();
     });
 
     // Draw Selection Box
     if (selectedIds.length > 0 && !editingId) {
-        const isDrawingPencil = action === 'drawing' && tool === 'pencil';
-        
-        if (!isDrawingPencil) {
+        // Only show selection box if we are NOT currently drawing a shape (unless it's just finishing up)
+        // action === 'drawing' means the mouse is down creating a shape. We don't want the box then.
+        if (action !== 'drawing') {
             const bounds = getSelectionBounds();
             if (bounds) {
                 ctx.save();
@@ -608,8 +586,10 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
       const { x, y } = getMouseCoordinates(event);
       const element = getElementAtPosition(x, y, elements);
       if (element && (element.type === 'text' || element.type === 'sticky') && !element.locked) {
-          setEditingId(element.id);
-          setSelectedIds([element.id]);
+          const newText = window.prompt("Edit text:", element.text || "");
+          if (newText !== null) {
+              updateElementText(element.id, newText);
+          }
       }
   };
 
@@ -641,8 +621,6 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
   };
 
   const handleMouseDown = (event: React.MouseEvent) => {
-    if (editingId) return; // Ignore canvas clicks if editing
-
     const { x, y } = getMouseCoordinates(event);
 
     if (tool === 'pan') {
@@ -707,47 +685,65 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
       }
     } 
     else {
-      setSelectedIds([]); 
+      // Creation Tools
       const id = uuidv4();
       const snappedX = enableSnapping ? snapToGrid(x) : x;
       const snappedY = enableSnapping ? snapToGrid(y) : y;
-      let newElement: CanvasElement;
+      let newElement: CanvasElement | null = null;
 
       if (tool === 'text') {
+        const textContent = window.prompt("Enter text:");
+        if (!textContent) return; 
+
         newElement = {
             id, type: 'text', x: snappedX, y: snappedY, 
             width: 200, height: 50, 
-            text: '', // Start empty for inline editing
+            text: textContent,
             strokeColor: COLORS.black, backgroundColor: 'transparent',
             strokeWidth: DEFAULT_ELEMENT_STYLES.strokeWidth, 
             fontFamily: 'sans-serif', textAlign: 'left',
             opacity: 1, strokeStyle: 'solid', rotation: 0
         };
-        const newHistory = history.slice(0, historyIndex + 1);
-        setHistory([...newHistory, [...elements, newElement]]);
-        setHistoryIndex(newHistory.length);
-        setElements([...elements, newElement]);
-        setSelectedIds([id]);
-        setEditingId(id); // Immediately start editing
-        return;
+        
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (ctx) {
+             const fontSize = 12 + (newElement.strokeWidth * 2);
+             ctx.font = `${fontSize}px ${newElement.fontFamily || 'sans-serif'}`;
+             const lineHeight = fontSize * 1.5;
+             const padding = 10;
+             const w = (newElement.width || 0) - padding * 2;
+             const lines = getWrappedTextLines(ctx, textContent, w);
+             const measuredHeight = (lines.length * lineHeight) + (padding * 2);
+             newElement.height = Math.max(measuredHeight, 50);
+        }
       } 
-      
-      const isSticky = tool === 'sticky';
-      newElement = {
-          id, type: tool as ElementType, x: snappedX, y: snappedY,
-          width: isSticky ? 200 : 0, height: isSticky ? 200 : 0,
-          strokeColor: COLORS.black,
-          backgroundColor: isSticky ? STICKY_COLORS.yellow : 'transparent',
-          strokeWidth: isSticky ? 2 : DEFAULT_ELEMENT_STYLES.strokeWidth,
-          points: tool === 'pencil' ? [{ x, y }] : undefined,
-          text: isSticky ? 'New Note' : undefined,
-          fontFamily: 'sans-serif', textAlign: 'left',
-          opacity: 1, strokeStyle: 'solid', rotation: 0
-      };
+      else {
+          const isSticky = tool === 'sticky';
+          newElement = {
+              id, type: tool as ElementType, x: snappedX, y: snappedY,
+              width: isSticky ? 200 : 0, height: isSticky ? 200 : 0,
+              strokeColor: COLORS.black,
+              backgroundColor: isSticky ? STICKY_COLORS.yellow : 'transparent',
+              strokeWidth: isSticky ? 2 : DEFAULT_ELEMENT_STYLES.strokeWidth,
+              points: tool === 'pencil' ? [{ x, y }] : undefined,
+              text: isSticky ? 'New Note' : undefined,
+              fontFamily: 'sans-serif', textAlign: 'left',
+              opacity: 1, strokeStyle: 'solid', rotation: 0
+          };
+      }
 
-      setAction('drawing');
-      setSelectedIds([newElement.id]); 
-      setElements([...elements, newElement]);
+      if (newElement) {
+        setSelectedIds([newElement.id]); 
+        setElements([...elements, newElement]);
+        if (tool !== 'text') {
+            setAction('drawing');
+        } else {
+             const newHistory = history.slice(0, historyIndex + 1);
+             setHistory([...newHistory, [...elements, newElement]]);
+             setHistoryIndex(newHistory.length);
+        }
+      }
     }
   };
 
@@ -949,11 +945,10 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     window.addEventListener('resize', handleResize);
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
-  }, [elements, viewport, selectedIds, showGrid, guides, selectionBox, editingId]);
+  }, [elements, viewport, selectedIds, showGrid, guides, selectionBox]);
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
-      if (editingId) return; // Prevent zooming while editing text
       if (e.ctrlKey) {
         e.preventDefault();
         const zoomSensitivity = 0.001;
@@ -971,60 +966,9 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
     return () => {
       if (canvas) canvas.removeEventListener('wheel', handleWheel);
     };
-  }, [editingId]);
+  }, []);
 
   const activeElements = elements.filter(el => selectedIds.includes(el.id));
-
-  // Render text editing overlay
-  const renderTextEditor = () => {
-     if (!editingId) return null;
-     const el = elements.find(e => e.id === editingId);
-     if (!el) return null;
-
-     const screenX = el.x * viewport.zoom + viewport.x;
-     const screenY = el.y * viewport.zoom + viewport.y;
-     const width = (el.width || 200) * viewport.zoom;
-     const height = (el.height || 50) * viewport.zoom;
-     const rotation = el.rotation || 0;
-     const fontSize = (12 + (el.strokeWidth * 2)) * viewport.zoom;
-     const padding = 10 * viewport.zoom;
-
-     return (
-        <textarea
-            ref={(ref) => ref && ref.focus()} // Explicit focus on mount
-            className="fixed outline-none resize-none overflow-hidden bg-transparent z-50 placeholder:text-slate-400"
-            style={{
-                left: screenX,
-                top: screenY,
-                width: width,
-                height: el.type === 'text' ? 'auto' : height,
-                minHeight: height,
-                transform: `rotate(${rotation}rad)`,
-                transformOrigin: 'top left',
-                fontSize: `${fontSize}px`,
-                fontFamily: el.fontFamily || 'sans-serif',
-                color: el.type === 'sticky' && el.strokeColor === 'transparent' ? '#000' : el.strokeColor,
-                textAlign: el.textAlign as any,
-                lineHeight: 1.5,
-                padding: `${padding}px`,
-                border: '1px dashed #94a3b8', // Visible dashed border while editing
-            }}
-            placeholder="Type something..."
-            defaultValue={el.text}
-            onBlur={(e) => handleTextComplete(el.id, e.target.value)}
-            onKeyDown={(e) => {
-                 // For regular text, Enter saves. For sticky, Enter adds new line.
-                 if (el.type === 'text' && e.key === 'Enter' && !e.shiftKey) {
-                     e.preventDefault();
-                     e.currentTarget.blur();
-                 }
-                 e.stopPropagation(); 
-            }}
-            onMouseDown={(e) => e.stopPropagation()} // Stop propagation to canvas
-            onPointerDown={(e) => e.stopPropagation()} 
-        />
-     );
-  };
 
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden">
@@ -1039,9 +983,8 @@ const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({
             tool === 'selection' ? 'cursor-default' : 'cursor-crosshair'
         }`}
       />
-      {renderTextEditor()}
       
-      {activeElements.length > 0 && !editingId && (
+      {activeElements.length > 0 && (
         <PropertiesPanel 
           elements={activeElements} 
           onChange={handlePropertyChange}
