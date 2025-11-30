@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { generateBrainstormIdeas } from '../services/geminiService';
+import { generateBrainstormIdeas } from '../services/aiService';
 
 interface AIAssistantProps {
   isOpen: boolean;

@@ -4,7 +4,7 @@ import { COLORS, DEFAULT_ELEMENT_STYLES, STICKY_COLORS, GRID_SIZE } from '../con
 import { adjustCoordinates, getElementAtPosition, rotatePoint, distance } from '../utils/geometry';
 import { v4 as uuidv4 } from 'uuid';
 import PropertiesPanel from './PropertiesPanel';
-import { recognizeImageContent, solveMathProblem } from '../services/geminiService';
+import { recognizeImageContent, solveMathProblem } from '../services/aiService';
 
 interface WhiteboardProps {
   tool: Tool;
